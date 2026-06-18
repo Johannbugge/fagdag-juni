@@ -37,13 +37,32 @@ const PRIORITY_LABEL: Record<number, string> = {
   3: "high",
 };
 
-// Task name -> { what it powers in the UI, hint shown only on demand }.
-// The card shows `powers` (concrete context, no spoiler); the `hint`
-// only shows when the contestant opens the hint dialog.
-const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
+// Task name -> { what it powers in the UI, full spec, optional hint }.
+// `spec` is the human-only contract the contestant reads to learn what the
+// function should do — solution.ts no longer carries this, on purpose, so
+// the participant has to translate it into a prompt. `hint` nudges without
+// spoiling. Both live only in the rendered DOM, not in any file the AI can
+// trivially read.
+const TASK_GUIDE: {
+  key: string;
+  powers: string;
+  spec: string;
+  hint: string;
+}[] = [
   {
     key: "weightedCompletionRate",
     powers: "styrer prosent-tallet i progress-baren øverst",
+    spec:
+      "Signatur: weightedCompletionRate(tickets: Ticket[]) → number\n\n" +
+      "Returner en hel-tall prosentverdi (0–100) for hvor stor andel av " +
+      "det totale arbeidet som er ferdig.\n\n" +
+      "Detaljer:\n" +
+      "• «Total» og «ferdig» måles i story points, ikke antall tickets — " +
+      "en done 8-pointer teller mer enn en done 1-pointer.\n" +
+      "• Rund av til nærmeste hele tall (Math.round).\n" +
+      "• Tom liste → 0.\n" +
+      "• Total points = 0 → 0 (ingen deling på null).\n\n" +
+      "Eksempel: 13 done points av 18 totale → Math.round(13/18 * 100) → 72.",
     hint:
       "Funksjonen heter weightedCompletionRate. Hva betyr «weighted» her? " +
       "Det er noe annet enn antall tickets som veier inn.\n\n" +
@@ -53,6 +72,15 @@ const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
   {
     key: "prioritySort",
     powers: "bestemmer rekkefølgen på ticket-listen",
+    spec:
+      "Signatur: prioritySort(tickets: Ticket[]) → Ticket[]\n\n" +
+      "Returner en NY array sortert etter (i denne rekkefølgen):\n" +
+      "1. priority synkende  (3 → 2 → 1)\n" +
+      "2. points synkende    (tiebreak innenfor samme priority)\n" +
+      "3. id stigende        (siste tiebreak — bruk localeCompare)\n\n" +
+      "Detaljer:\n" +
+      "• Inputen skal IKKE muteres.\n" +
+      "• Returner en ny array, ikke samme referanse.",
     hint:
       "Spec'en lister TRE nivåer av sortering, ikke én. Hva skjer hvis to " +
       "tickets har samme priority? Og to tickets med samme priority OG " +
@@ -63,6 +91,15 @@ const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
   {
     key: "estimateSprintDays",
     powers: "regner ut «~N dager igjen»-anslaget",
+    spec:
+      "Signatur: estimateSprintDays(tickets: Ticket[], velocity: number) → number\n\n" +
+      "Returner antall hele dager som trengs for å bli ferdig med åpent " +
+      "arbeid, gitt at teamet leverer velocity points per dag.\n\n" +
+      "Detaljer:\n" +
+      "• Bare points fra tickets som IKKE er done teller.\n" +
+      "• Rund OPP (en halv dag krever en hel dag — bruk Math.ceil).\n" +
+      "• Hvis det ikke finnes åpne tickets, returner 0.\n\n" +
+      "Eksempel: 12 åpne points, velocity 5 → Math.ceil(12/5) → 3.",
     hint:
       "Spec'en sier «open work» og «round up». Funksjonen din summerer " +
       "ALLE points og bruker Math.round.\n\n" +
@@ -72,6 +109,19 @@ const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
   {
     key: "assigneeStats",
     powers: "fyller arbeidsmengde-chipsene under headeren",
+    spec:
+      "Signatur: assigneeStats(tickets: Ticket[]) → " +
+      "Record<string, { open: number; done: number; points: number }>\n\n" +
+      "Returner en summary per assignee, keyed på navn:\n" +
+      "{ [assignee]: { open, done, points } }\n\n" +
+      "Detaljer:\n" +
+      "• open   = antall IKKE-ferdige tickets for personen.\n" +
+      "• done   = antall ferdige tickets for personen.\n" +
+      "• points = sum av points for personens ÅPNE tickets (ikke alle). " +
+      "Closed tickets bidrar IKKE — chippen viser gjenstående arbeid, " +
+      "ikke historisk innsats.\n" +
+      "• Alle assignees som finnes i tickets skal være med — også de " +
+      "som bare har ferdige tickets (da: { open: 0, done: N, points: 0 }).",
     hint:
       "Les linja om points en gang til. Den sier «OPEN tickets' points " +
       "only». Ikke alle. Closed tickets skal IKKE bidra til points-summen " +
@@ -81,6 +131,21 @@ const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
   {
     key: "unblockedReady",
     powers: "fyller «Ready to start»-panelet",
+    spec:
+      "Signatur: unblockedReady(tickets: Ticket[], " +
+      "blockers: Record<string, string[]>) → string[]\n\n" +
+      "Returner ID-ene til tickets som er KLARE å starte, sortert etter:\n" +
+      "1. priority synkende\n" +
+      "2. id stigende (tiebreak — localeCompare)\n\n" +
+      "En ticket er «klar» når ALLE disse stemmer:\n" +
+      "• ticket'en selv er IKKE done\n" +
+      "• HVER id i blockers[ticketId] peker på en ticket som ER done\n" +
+      "• Tickets uten entry i blockers-mapet (eller tom liste) regnes " +
+      "som ublokkert\n" +
+      "• En ukjent id i en blocker-liste regnes som IKKE done " +
+      "(altså blokkerer den)\n\n" +
+      "Shape: blockers = { [ticketId]: string[] }\n" +
+      "       Stringarrayen er IDene som må være done før ticket'en kan starte.",
     hint:
       "Forskjellen mellom .some og .every er essensen her. .some sier " +
       "«minst én er done». .every sier «ALLE er done». Spec'en krever " +
@@ -92,6 +157,20 @@ const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
   {
     key: "topNByAssignee",
     powers: "fyller «Top picks per assignee»-gridet",
+    spec:
+      "Signatur: topNByAssignee(tickets: Ticket[], n: number) → " +
+      "Record<string, Ticket[]>\n\n" +
+      "For hver assignee i tickets, returner opptil N av personens ÅPNE " +
+      "tickets, sortert etter:\n" +
+      "1. points synkende\n" +
+      "2. id stigende (tiebreak)\n\n" +
+      "Detaljer:\n" +
+      "• Done tickets ekskluderes.\n" +
+      "• Alle assignees som finnes i tickets skal være med, også de hvor " +
+      "alle tickets er done — da får de en tom array.\n" +
+      "• Hvis N er større enn antall åpne, returner alle åpne.\n" +
+      "• n = 0 → hver assignee mappes til [].\n\n" +
+      "Shape: { [assignee]: Ticket[] }",
     hint:
       "Fire steg, i denne rekkefølgen:\n" +
       "1. Gruppér tickets på assignee (alle assignees skal være med, " +
@@ -103,6 +182,8 @@ const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
       "listen blir N lang. Hverken sortert eller filtrert.",
   },
 ];
+
+type ModalKind = "spec" | "hint";
 
 function fmt(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -137,8 +218,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Which task's hint dialog is open, if any.
-  const [hintFor, setHintFor] = useState<string | null>(null);
+  // Which task's modal (spec OR hint) is open, if any.
+  const [modal, setModal] = useState<{ kind: ModalKind; key: string } | null>(
+    null,
+  );
 
   // Live ticking clock.
   useEffect(() => {
@@ -146,14 +229,14 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  // Close the hint dialog on ESC.
+  // Close the modal on ESC.
   useEffect(() => {
-    if (!hintFor) return;
+    if (!modal) return;
     const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" && setHintFor(null);
+      e.key === "Escape" && setModal(null);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hintFor]);
+  }, [modal]);
 
   // Fetch the challenge dataset once we have a participant id.
   useEffect(() => {
@@ -429,12 +512,20 @@ export default function App() {
                   <code>{t.key}</code>
                 </div>
                 <div className="task-powers">{t.powers}</div>
-                <button
-                  className="hint-btn"
-                  onClick={() => setHintFor(t.key)}
-                >
-                  💡 Hint
-                </button>
+                <div className="task-btns">
+                  <button
+                    className="task-btn primary"
+                    onClick={() => setModal({ kind: "spec", key: t.key })}
+                  >
+                    📋 Oppgave
+                  </button>
+                  <button
+                    className="task-btn"
+                    onClick={() => setModal({ kind: "hint", key: t.key })}
+                  >
+                    💡 Hint
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -628,37 +719,61 @@ export default function App() {
         )}
       </div>
 
-      {/* Hint dialog ------------------------------------------------- */}
-      {hintFor && (() => {
-        const t = TASK_GUIDE.find((x) => x.key === hintFor);
+      {/* Spec / hint dialog ----------------------------------------- */}
+      {modal && (() => {
+        const t = TASK_GUIDE.find((x) => x.key === modal.key);
         if (!t) return null;
+        const isSpec = modal.kind === "spec";
+        const eyebrow = isSpec ? "Oppgave" : "Hint";
+        const body = isSpec ? t.spec : t.hint;
         return (
           <div
             className="hint-backdrop"
-            onClick={() => setHintFor(null)}
+            onClick={() => setModal(null)}
             role="dialog"
             aria-modal="true"
           >
             <div
-              className="hint-modal"
+              className={`hint-modal ${isSpec ? "is-spec" : "is-hint"}`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="hint-modal-head">
                 <div>
-                  <div className="hint-eyebrow">Hint</div>
+                  <div className="hint-eyebrow">{eyebrow}</div>
                   <code className="hint-fn">{t.key}</code>
                 </div>
                 <button
                   className="hint-close"
-                  onClick={() => setHintFor(null)}
+                  onClick={() => setModal(null)}
                   aria-label="Lukk"
                 >
                   ×
                 </button>
               </div>
-              <p className="hint-body">{t.hint}</p>
+              <p className="hint-body">{body}</p>
               <div className="hint-foot">
-                <span className="muted">Trykk ESC eller klikk utenfor for å lukke</span>
+                {isSpec ? (
+                  <button
+                    className="hint-switch"
+                    onClick={() =>
+                      setModal({ kind: "hint", key: t.key })
+                    }
+                  >
+                    💡 Står du fast? Vis hint
+                  </button>
+                ) : (
+                  <button
+                    className="hint-switch"
+                    onClick={() =>
+                      setModal({ kind: "spec", key: t.key })
+                    }
+                  >
+                    📋 Vis oppgave-spec
+                  </button>
+                )}
+                <span className="muted">
+                  ESC eller klikk utenfor for å lukke
+                </span>
               </div>
             </div>
           </div>
@@ -739,6 +854,7 @@ const CSS = `
   .task {
     border: 1px solid #ececf1; border-radius: 10px; padding: 12px 14px;
     background: #fafafd; transition: background .25s, border-color .25s;
+    display: flex; flex-direction: column;
   }
   .task.pass { background: #eefaf1; border-color: #c8ebd2; }
   .task.fail { background: #fbf3f4; border-color: #f3d9de; }
@@ -752,12 +868,19 @@ const CSS = `
   .task.pass .task-icon { background: #34d399; color: #fff; }
   .task.fail .task-icon { background: #c0344d; color: #fff; }
   .task-powers { margin-top: 6px; font-size: 12px; color: #6b6b76; }
-  .hint-btn {
-    margin-top: 10px; padding: 5px 10px; font-size: 12px; font-weight: 600;
-    background: #fff; border: 1px solid #e0e0e8; border-radius: 8px;
-    color: #4a4a55; cursor: pointer; transition: background .15s, border-color .15s;
+  .task-btns {
+    margin-top: auto; padding-top: 10px;
+    display: flex; gap: 6px; flex-wrap: wrap;
   }
-  .hint-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: #4f46e5; }
+  .task-btn {
+    flex: 1 1 auto; padding: 4px 8px; font-size: 11px; font-weight: 600;
+    background: #fff; border: 1px solid #e0e0e8; border-radius: 7px;
+    color: #4a4a55; cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+    white-space: nowrap; line-height: 1.4;
+  }
+  .task-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: #4f46e5; }
+  .task-btn.primary { color: #4f46e5; border-color: #c7d2fe; background: #fff; }
+  .task-btn.primary:hover { background: #eef2ff; }
 
   .hint-backdrop {
     position: fixed; inset: 0; background: rgba(15, 15, 25, .55);
@@ -767,10 +890,13 @@ const CSS = `
   }
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   .hint-modal {
-    background: #fff; border-radius: 16px; max-width: 520px; width: 100%;
+    background: #fff; border-radius: 16px; max-width: 560px; width: 100%;
     padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,.25);
     animation: pop-in .18s cubic-bezier(.2,.8,.2,1);
+    max-height: calc(100vh - 64px); overflow: auto;
   }
+  .hint-modal.is-spec .hint-eyebrow { color: #4f46e5; }
+  .hint-modal.is-hint .hint-eyebrow { color: #b9620a; }
   @keyframes pop-in { from { transform: translateY(8px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
   .hint-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
   .hint-eyebrow {
@@ -787,7 +913,16 @@ const CSS = `
     margin: 18px 0 14px; font-size: 14px; line-height: 1.55; color: #2a2a32;
     white-space: pre-line;
   }
-  .hint-foot { font-size: 12px; color: #9a9aa4; border-top: 1px solid #ececf1; padding-top: 10px; }
+  .hint-foot {
+    font-size: 12px; color: #9a9aa4; border-top: 1px solid #ececf1;
+    padding-top: 12px; display: flex; align-items: center;
+    justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .hint-switch {
+    background: none; border: none; padding: 0; color: #4f46e5;
+    font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline;
+  }
+  .hint-switch:hover { color: #4338ca; }
 
   .loading-ghost {
     height: 64px; margin-top: 14px; border-radius: 12px;
