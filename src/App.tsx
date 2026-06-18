@@ -358,8 +358,8 @@ export default function App() {
           </p>
           <ul className="hint-list">
             <li>Du redigerer kun <code>src/solution.ts</code>.</li>
-            <li>Les JSDoc-en over hver funksjon — det er der edge-casene står.</li>
-            <li>Trenger du et puff? Hver oppgave har en hint-knapp.</li>
+            <li>Klikk <b>Oppgave</b> på et oppgave-kort for å lese hva funksjonen skal gjøre.</li>
+            <li>Står du fast? Hver oppgave har en hint-knapp ved siden av.</li>
           </ul>
           <label>Navnet ditt</label>
           <input
