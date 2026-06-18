@@ -37,39 +37,70 @@ const PRIORITY_LABEL: Record<number, string> = {
   3: "high",
 };
 
-// Task name -> { what it powers in the UI, brief reminder }. Used by the
-// task tracker panel so contestants always have a one-line refresher
-// without flipping back to solution.ts.
+// Task name -> { what it powers in the UI, hint shown only on demand }.
+// The card shows `powers` (concrete context, no spoiler); the `hint`
+// only shows when the contestant opens the hint dialog.
 const TASK_GUIDE: { key: string; powers: string; hint: string }[] = [
   {
     key: "weightedCompletionRate",
-    powers: "the progress bar % at the top",
-    hint: "points-weighted, not ticket-count-weighted",
+    powers: "styrer prosent-tallet i progress-baren øverst",
+    hint:
+      "Funksjonen heter weightedCompletionRate. Hva betyr «weighted» her? " +
+      "Det er noe annet enn antall tickets som veier inn.\n\n" +
+      "Sjekk også edge-casene: tom liste, og en liste hvor totalen " +
+      "av points er 0. Begge skal returnere 0 uten å dele på null.",
   },
   {
     key: "prioritySort",
-    powers: "the order of the ticket list",
-    hint: "priority desc → points desc → id asc",
+    powers: "bestemmer rekkefølgen på ticket-listen",
+    hint:
+      "Spec'en lister TRE nivåer av sortering, ikke én. Hva skjer hvis to " +
+      "tickets har samme priority? Og to tickets med samme priority OG " +
+      "samme points?\n\n" +
+      "Spør deg selv også: returnerer sorten en NY array, eller muterer " +
+      "den inputen?",
   },
   {
     key: "estimateSprintDays",
-    powers: "the ‘~N days’ estimate",
-    hint: "open points only, round up",
+    powers: "regner ut «~N dager igjen»-anslaget",
+    hint:
+      "Spec'en sier «open work» og «round up». Funksjonen din summerer " +
+      "ALLE points og bruker Math.round.\n\n" +
+      "Hvilke tickets skal egentlig telles? Og hvordan håndteres en halv " +
+      "dag — forsvinner den, eller blir det en hel dag til?",
   },
   {
     key: "assigneeStats",
-    powers: "the workload chips per person",
-    hint: "points is OPEN-only — closed tickets don't count",
+    powers: "fyller arbeidsmengde-chipsene under headeren",
+    hint:
+      "Les linja om points en gang til. Den sier «OPEN tickets' points " +
+      "only». Ikke alle. Closed tickets skal IKKE bidra til points-summen " +
+      "— chippen viser gjenstående arbeid, ikke historisk innsats.\n\n" +
+      "open og done telles fortsatt hver for seg.",
   },
   {
     key: "unblockedReady",
-    powers: "the ‘Ready to start’ panel",
-    hint: "every blocker must be done; missing entry = unblocked",
+    powers: "fyller «Ready to start»-panelet",
+    hint:
+      "Forskjellen mellom .some og .every er essensen her. .some sier " +
+      "«minst én er done». .every sier «ALLE er done». Spec'en krever " +
+      "det siste.\n\n" +
+      "Pluss: hva med tickets som ikke har en entry i blockers-mapet? " +
+      "De har ingen blockers — så de er ubekymret.\n\n" +
+      "Til slutt: resultatet skal være sortert.",
   },
   {
     key: "topNByAssignee",
-    powers: "the ‘Top picks per assignee’ grid",
-    hint: "open only, sorted by points desc, capped at N",
+    powers: "fyller «Top picks per assignee»-gridet",
+    hint:
+      "Fire steg, i denne rekkefølgen:\n" +
+      "1. Gruppér tickets på assignee (alle assignees skal være med, " +
+      "også de uten åpne — da tom array).\n" +
+      "2. Filtrer bort tickets som er done.\n" +
+      "3. Sortér på points desc, så id asc.\n" +
+      "4. Kutt til N.\n\n" +
+      "Funksjonen din gjør bare steg 1 — pusher i dataset-rekkefølge til " +
+      "listen blir N lang. Hverken sortert eller filtrert.",
   },
 ];
 
@@ -106,11 +137,23 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Which task's hint dialog is open, if any.
+  const [hintFor, setHintFor] = useState<string | null>(null);
+
   // Live ticking clock.
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Close the hint dialog on ESC.
+  useEffect(() => {
+    if (!hintFor) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setHintFor(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hintFor]);
 
   // Fetch the challenge dataset once we have a participant id.
   useEffect(() => {
@@ -218,30 +261,32 @@ export default function App() {
           <div className="badge">Fagdag Juni</div>
           <h1>Debug Race</h1>
           <p className="sub">
-            You've inherited a Sprint Board dashboard. Every number on
-            screen — the progress bar, the workload chips, the
-            ready-to-start panel, the top-picks grid — is computed by one
-            of six pure functions in <code>src/solution.ts</code>.
+            Du har overtatt et <b>Sprint Board</b>. Alle tallene du ser —
+            fremdrift, arbeidsmengde, hva som er klart å starte, alt —
+            beregnes av seks små funksjoner i <code>src/solution.ts</code>.
+            Hver eneste én av dem har en bug.
             <br />
             <br />
-            All six are subtly broken. Wrong-looking output on the
-            dashboard is your hint about which one to chase. Fix them all,
-            submit, watch your name climb the leaderboard.
+            Oppgaven er å <b>fikse oppførselen til Sprint Boardet</b> ved å
+            rette opp i de seks funksjonene. Når noe ser feil ut i UI'et,
+            er det fordi den tilhørende funksjonen gjør noe litt galt.
+            Bruk AI-verktøyet ditt, les JSDoc'en nøye, send inn — så ofte
+            du vil.
           </p>
           <ul className="hint-list">
-            <li>You only edit <code>src/solution.ts</code>.</li>
-            <li>Read the JSDoc on each function — the corner cases bite.</li>
-            <li>Submit as often as you want — the response tells you which tasks pass.</li>
+            <li>Du redigerer kun <code>src/solution.ts</code>.</li>
+            <li>Les JSDoc-en over hver funksjon — det er der edge-casene står.</li>
+            <li>Trenger du et puff? Hver oppgave har en hint-knapp.</li>
           </ul>
-          <label>Your name</label>
+          <label>Navnet ditt</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Ada"
+            placeholder="f.eks. Ada"
             onKeyDown={(e) => e.key === "Enter" && register()}
           />
           <button onClick={register} disabled={busy || !name.trim()}>
-            {busy ? "Starting…" : "Start the clock →"}
+            {busy ? "Starter…" : "Start klokka →"}
           </button>
           {err && <p className="err">{err}</p>}
         </div>
@@ -331,25 +376,42 @@ export default function App() {
   return (
     <div className="wrap">
       <style>{CSS}</style>
+
+      {/* Floating scoreboard: top-right, fixed across scroll. ----------- */}
+      <aside className="scoreboard" aria-label="Live score and timer">
+        <div className="scoreboard-cell">
+          <div className="scoreboard-label">Score</div>
+          <div
+            className={`scoreboard-value ${result?.passed ? "pass" : ""}`}
+          >
+            {result ? `${result.score} / ${result.total}` : "0 / 6"}
+          </div>
+        </div>
+        <div className="scoreboard-divider" />
+        <div className="scoreboard-cell">
+          <div className="scoreboard-label">Tid</div>
+          <div className="scoreboard-value">{fmt(elapsed)}</div>
+        </div>
+        <button
+          className="scoreboard-reset"
+          onClick={reset}
+          title="Start på nytt med et annet navn"
+        >
+          not you?
+        </button>
+      </aside>
+
       <div className="board">
         <header>
           <div>
             <div className="badge inline">Fagdag Juni · Debug Race</div>
             <h1>Sprint Board</h1>
             <p className="sub">
-              Fix the six functions in <code>src/solution.ts</code>. Every
-              wrong number you see below is a hint about which one is
-              still broken.
+              Fiks oppførselen til Sprint Boardet ved å rette opp de seks
+              funksjonene i <code>src/solution.ts</code>. Hvert tall som
+              ser feil ut nedenfor peker på funksjonen som fortsatt har
+              en bug. Klikk <b>Hint</b> på en oppgave hvis du står fast.
             </p>
-          </div>
-          <div className="meta">
-            <div className="score-pill">
-              {result ? `${result.score} / ${result.total}` : "0 / 6"}
-            </div>
-            <span className="timer">{fmt(elapsed)}</span>
-            <button className="link" onClick={reset}>
-              not you?
-            </button>
           </div>
         </header>
 
@@ -366,8 +428,13 @@ export default function App() {
                   <span className="task-icon">{icon}</span>
                   <code>{t.key}</code>
                 </div>
-                <div className="task-powers">powers {t.powers}</div>
-                <div className="task-hint">{t.hint}</div>
+                <div className="task-powers">{t.powers}</div>
+                <button
+                  className="hint-btn"
+                  onClick={() => setHintFor(t.key)}
+                >
+                  💡 Hint
+                </button>
               </div>
             );
           })}
@@ -553,13 +620,50 @@ export default function App() {
             </ul>
             {!result.passed && (
               <p className="hint">
-                Fix what's failing and submit again — resubmit as many times
-                as you like.
+                Fix det som feiler og send inn igjen — så mange ganger
+                du vil.
               </p>
             )}
           </div>
         )}
       </div>
+
+      {/* Hint dialog ------------------------------------------------- */}
+      {hintFor && (() => {
+        const t = TASK_GUIDE.find((x) => x.key === hintFor);
+        if (!t) return null;
+        return (
+          <div
+            className="hint-backdrop"
+            onClick={() => setHintFor(null)}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              className="hint-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="hint-modal-head">
+                <div>
+                  <div className="hint-eyebrow">Hint</div>
+                  <code className="hint-fn">{t.key}</code>
+                </div>
+                <button
+                  className="hint-close"
+                  onClick={() => setHintFor(null)}
+                  aria-label="Lukk"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="hint-body">{t.hint}</p>
+              <div className="hint-foot">
+                <span className="muted">Trykk ESC eller klikk utenfor for å lukke</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -648,7 +752,42 @@ const CSS = `
   .task.pass .task-icon { background: #34d399; color: #fff; }
   .task.fail .task-icon { background: #c0344d; color: #fff; }
   .task-powers { margin-top: 6px; font-size: 12px; color: #6b6b76; }
-  .task-hint { margin-top: 4px; font-size: 11px; color: #9a9aa4; font-style: italic; }
+  .hint-btn {
+    margin-top: 10px; padding: 5px 10px; font-size: 12px; font-weight: 600;
+    background: #fff; border: 1px solid #e0e0e8; border-radius: 8px;
+    color: #4a4a55; cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .hint-btn:hover { background: #eef2ff; border-color: #c7d2fe; color: #4f46e5; }
+
+  .hint-backdrop {
+    position: fixed; inset: 0; background: rgba(15, 15, 25, .55);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; z-index: 50; backdrop-filter: blur(2px);
+    animation: fade-in .15s ease;
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .hint-modal {
+    background: #fff; border-radius: 16px; max-width: 520px; width: 100%;
+    padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    animation: pop-in .18s cubic-bezier(.2,.8,.2,1);
+  }
+  @keyframes pop-in { from { transform: translateY(8px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+  .hint-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .hint-eyebrow {
+    font: 700 11px/1 ui-monospace, monospace; letter-spacing: .18em;
+    text-transform: uppercase; color: #4f46e5; margin-bottom: 6px;
+  }
+  .hint-fn { background: #ececf1; padding: 3px 8px; border-radius: 6px; font-size: 14px; font-weight: 600; }
+  .hint-close {
+    background: none; border: none; font-size: 24px; color: #9a9aa4;
+    cursor: pointer; line-height: 1; padding: 0 4px;
+  }
+  .hint-close:hover { color: #1d1d22; }
+  .hint-body {
+    margin: 18px 0 14px; font-size: 14px; line-height: 1.55; color: #2a2a32;
+    white-space: pre-line;
+  }
+  .hint-foot { font-size: 12px; color: #9a9aa4; border-top: 1px solid #ececf1; padding-top: 10px; }
 
   .loading-ghost {
     height: 64px; margin-top: 14px; border-radius: 12px;
@@ -666,6 +805,46 @@ const CSS = `
   .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
   .timer { font: 600 20px ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
   .link { background: none; border: none; color: #9a9aa4; font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0; }
+
+  /* Floating scoreboard — fixed top-right, stays put while you scroll. */
+  .scoreboard {
+    position: fixed; top: 24px; right: 24px; z-index: 30;
+    background: #fff; border: 1px solid #e6e6ec; border-radius: 16px;
+    padding: 14px 20px;
+    box-shadow: 0 10px 30px rgba(15, 15, 25, .08), 0 1px 3px rgba(0,0,0,.04);
+    display: grid;
+    grid-template-columns: auto 1px auto;
+    align-items: center;
+    column-gap: 18px;
+    row-gap: 10px;
+  }
+  .scoreboard-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 68px; }
+  .scoreboard-label {
+    font: 700 10px/1 ui-monospace, monospace; letter-spacing: .18em;
+    text-transform: uppercase; color: #9a9aa4;
+  }
+  .scoreboard-value {
+    font: 700 24px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums; color: #1d1d22;
+    letter-spacing: -0.02em;
+  }
+  .scoreboard-value.pass { color: #16a34a; }
+  .scoreboard-divider { width: 1px; align-self: stretch; background: #ececf1; }
+  .scoreboard-reset {
+    grid-column: 1 / -1;
+    background: none; border: none; padding: 0;
+    color: #9a9aa4; font-size: 11px; cursor: pointer;
+    text-decoration: underline; justify-self: center;
+  }
+  .scoreboard-reset:hover { color: #4f46e5; }
+
+  /* Collapse the floating scoreboard back into the flow on narrow screens
+     so it doesn't overlap the board content. */
+  @media (max-width: 980px) {
+    .scoreboard {
+      position: static; margin: 0 auto 16px; width: fit-content;
+    }
+  }
 
   .bar { height: 8px; background: #ececf1; border-radius: 99px; overflow: hidden; margin: 18px 0 8px; }
   .fill { height: 100%; background: #4f46e5; border-radius: 99px; transition: width .3s ease; }
