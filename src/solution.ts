@@ -28,21 +28,12 @@ export interface AssigneeStat {
 }
 
 export function weightedCompletionRate(tickets: Ticket[]): number {
-  const total = tickets.reduce((s, t) => s + t.points, 0);
-  if (total === 0) return 0;
-  const done = tickets
-    .filter((t) => t.done)
-    .reduce((s, t) => s + t.points, 0);
-  return Math.round((done / total) * 100);
+  const done = tickets.filter((t) => t.done).length;
+  return Math.round((done / tickets.length) * 100);
 }
 
 export function prioritySort(tickets: Ticket[]): Ticket[] {
-  return [...tickets].sort(
-    (a, b) =>
-      b.priority - a.priority ||
-      b.points - a.points ||
-      a.id.localeCompare(b.id),
-  );
+  return tickets.sort((a, b) => b.priority - a.priority);
 }
 
 export function estimateSprintDays(
