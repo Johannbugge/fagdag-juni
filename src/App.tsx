@@ -750,7 +750,14 @@ export default function App() {
                   ×
                 </button>
               </div>
-              <p className="hint-body">{body}</p>
+              <p
+                className="hint-body"
+                onCopy={(e) => e.preventDefault()}
+                onCut={(e) => e.preventDefault()}
+                onContextMenu={(e) => e.preventDefault()}
+              >
+                {body}
+              </p>
               <div className="hint-foot">
                 {isSpec ? (
                   <button
@@ -912,6 +919,8 @@ const CSS = `
   .hint-body {
     margin: 18px 0 14px; font-size: 14px; line-height: 1.55; color: #2a2a32;
     white-space: pre-line;
+    -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+    user-select: none; -webkit-touch-callout: none;
   }
   .hint-foot {
     font-size: 12px; color: #9a9aa4; border-top: 1px solid #ececf1;
